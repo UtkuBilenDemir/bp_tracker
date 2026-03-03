@@ -14,7 +14,7 @@ echo "========================================"
 # ── System dependencies ───────────────────────────────────────────────────
 echo ""
 echo "→ Installing system packages..."
-apt-get update -qq
+apt-get update --allow-releaseinfo-change -qq
 apt-get install -y -qq curl git nginx certbot python3-certbot-nginx
 
 # ── uv ────────────────────────────────────────────────────────────────────
