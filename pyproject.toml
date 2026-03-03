@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.84.0",
     "dash>=4.0.0",
+    "gunicorn>=25.1.0",
     "pandas>=3.0.1",
     "passlib>=1.7.4",
     "pillow>=12.1.1",
