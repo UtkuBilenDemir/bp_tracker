@@ -4,51 +4,66 @@
 
 > A personal experiment in human–AI collaboration, built entirely through conversation with **Claude Code**.
 
-This is a lightweight, local blood pressure tracking system. Drop a photo of your BP monitor into a folder — the app reads the display, logs the values, and renders them in a live dashboard. No manual transcription, no cloud services, no subscriptions beyond an Anthropic API key.
+This is a web-based blood pressure tracking system. Open the dashboard on your phone, upload a photo of your BP monitor, and the app does the rest — reads the display via Claude vision API, logs the values, and renders a live chart. Hosted on your own domain, protected by a password.
 
 ---
 
-## What this is
-
-This project started as a test: *how far can you get building a real, useful tool by just talking to an AI?*
-
-The answer, it turns out, is pretty far. Every line of code, every design decision — the folder watcher, the vision extraction, the colour-coded dashboard, the gitignore, the environment setup — was written by [Claude Code](https://claude.ai/claude-code) through a back-and-forth conversation. No manual coding required.
-
-The tool itself is genuinely useful: it watches a folder for photos of a blood pressure monitor, uses Claude's vision API to extract the readings automatically, logs everything to a CSV you can edit by hand, and displays a clean Plotly/Dash dashboard with clinical reference zones and hover annotations.
+![BP Tracker Dashboard](docs/screenshot.png)
 
 ---
 
 ## How it works
 
 ```
-📷 Photo dropped into watch_folder/
+📱 Open bp.utkubilen.de on iPhone
         ↓
-🔍 watcher.py detects the new file
+🔐 Log in (basic auth)
         ↓
-🤖 Claude vision API reads the monitor display
-   → systolic, diastolic, heart rate, confidence, comment
+📷 Upload photo of BP monitor
         ↓
-📅 Timestamp extracted from photo EXIF data
-   (never silently falls back to system time)
+🤖 Claude vision API reads the display
+   → systolic, diastolic, heart rate, AI comment
+        ↓
+📅 Timestamp extracted from photo EXIF
+   (prompts for manual entry if missing)
         ↓
 📄 New row appended to data/readings.csv
         ↓
-📊 dashboard.py auto-refreshes with the new reading
+📊 Dashboard auto-refreshes
 ```
 
 ---
 
 ## Features
 
-- **Automatic reading extraction** via Claude vision — no typing numbers manually
-- **EXIF-first timestamps** — uses when the photo was actually taken, not when it was processed
-- **Duplicate detection** — same photo dropped twice is silently skipped (hash-based)
-- **Colour-coded BP zones** — green / yellow / red bands based on clinical thresholds
-- **Baseline reference lines** — compare every reading against your personal baseline
-- **Dose tracking** — mark readings where medication was taken; shown as a distinct marker on the chart
-- **AI hover tooltips** — each data point carries a short clinical comment generated at extraction time
-- **Hand-editable CSV** — the data store is plain text; add, edit or delete rows freely
-- **Auto-refresh dashboard** — polls every 15 seconds, no page reload needed
+- **Browser-based upload** — works from any device, no app needed
+- **Claude vision extraction** — reads the monitor display automatically, no typing
+- **EXIF-first timestamps** — uses when the photo was actually taken
+- **Dose tracking per reading** — logs mg amount with each entry; dose changes appear as vertical markers on the chart
+- **Colour-coded BP zones** — green / yellow / red clinical thresholds
+- **Baseline reference lines** — every reading compared against your personal baseline
+- **AI hover tooltips** — each data point carries a short clinical observation
+- **CSV download** — export your data any time from the dashboard
+- **User management** — add or remove dashboard users without touching the server
+- **Auto-refresh** — dashboard polls every 15 seconds
+- **Hand-editable CSV** — plain text, edit freely in any spreadsheet app
+
+---
+
+## Architecture
+
+Everything runs on a VPS. No local processing required.
+
+```
+iPhone browser
+    ↓  HTTPS
+nginx (bp.utkubilen.de)
+    ↓  basic auth
+    ↓  reverse proxy → :8050
+Dash app (gunicorn)
+    ↓  Claude vision API
+data/readings.csv
+```
 
 ---
 
@@ -56,16 +71,18 @@ The tool itself is genuinely useful: it watches a folder for photos of a blood p
 
 ```
 bp-tracker/
-├── watch_folder/           ← drop photos here
-│   └── .gitkeep
+├── dashboard.py            ← Dash app: upload, charts, download, user management
+├── watcher.py              ← optional local folder watcher (alternative workflow)
+├── config.py               ← all settings in one place
+├── deploy/
+│   ├── nginx.conf          ← nginx reverse proxy + basic auth config
+│   ├── bp-tracker.service  ← systemd unit (keeps gunicorn alive)
+│   └── setup_vps.sh        ← one-shot VPS setup script
 ├── data/
 │   ├── readings.csv        ← your data (gitignored)
 │   ├── readings.example.csv
-│   ├── errors.log          ← extraction failures (gitignored)
-│   └── .gitkeep
-├── config.py               ← all settings in one place
-├── watcher.py              ← folder watcher + vision extraction
-├── dashboard.py            ← Plotly/Dash visualisation
+│   └── .htpasswd           ← auth users (gitignored)
+├── watch_folder/           ← drop photos here (local watcher only)
 ├── pyproject.toml          ← dependencies (managed by uv)
 ├── uv.lock                 ← exact pinned versions
 ├── .env.example            ← API key template
@@ -76,79 +93,81 @@ bp-tracker/
 
 ## Setup
 
-### 1. Clone and install
+### Requirements
+- A VPS running Ubuntu/Debian with nginx installed
+- A domain pointing at your VPS (DNS A record)
+- An [Anthropic API key](https://console.anthropic.com)
 
-This project uses [uv](https://github.com/astral-sh/uv) for environment management — fast, reproducible, no manual venv needed.
+### 1. Point your subdomain at the VPS
 
-```bash
-git clone git@github.com:UtkuBilenDemir/bp_tracker.git
-cd bp_tracker
+In your DNS provider (e.g. Namecheap → Advanced DNS), add:
 
-# Install uv if you don't have it
-brew install uv          # macOS
-# or: pip install uv
+| Type | Host | Value |
+|---|---|---|
+| A Record | `bp` | `your.vps.ip` |
 
-# Create virtualenv and install all dependencies at pinned versions
-uv sync
-```
-
-### 2. Add your API key
-
-The watcher uses the [Anthropic API](https://console.anthropic.com) for vision extraction. New accounts receive $5 in free credits — sufficient for months of daily readings at this scale.
+### 2. Run the setup script on the VPS
 
 ```bash
-cp .env.example .env
+curl -s https://raw.githubusercontent.com/UtkuBilenDemir/bp_tracker/main/deploy/setup_vps.sh -o setup_vps.sh
+sudo bash setup_vps.sh
 ```
 
-Open `.env` and replace the placeholder:
-
-```
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
-```
-
-> Your key never leaves this file. `.env` is gitignored and will never be committed.
+The script will:
+- Install dependencies (nginx, certbot, uv)
+- Clone the repo to `/home/ubd/bp_tracker`
+- Ask for your Anthropic API key
+- Create the initial dashboard user
+- Configure nginx with HTTPS via Let's Encrypt
+- Start the app as a systemd service
 
 ### 3. Configure your baseline
 
-Open `config.py` and update the baseline values to match your own:
+Open `config.py` and set your values:
 
 ```python
 BASELINE_SYSTOLIC  = 111   # mmHg
 BASELINE_DIASTOLIC = 63    # mmHg
 BASELINE_HR        = 60    # bpm
+CURRENT_DOSE_MG    = 5     # default pre-fill in upload form
 ```
 
-These appear as reference lines on the dashboard and inform the AI's hover comments.
+### 4. Copy your CSV (if migrating)
+
+```bash
+scp data/readings.csv user@your.vps.ip:/home/ubd/bp_tracker/data/readings.csv
+```
 
 ---
 
 ## Usage
 
-### Start the watcher
+Open your dashboard URL in any browser. Log in, upload a photo, fill in dose info, hit **Process Reading**.
 
-In one terminal, run:
+### Changing the dose
+The upload form has a **Dose (mg)** field pre-filled with the current default. Just change the number when your dose changes — it's saved per reading. The chart draws a vertical orange line whenever the dose changes between readings.
 
-```bash
-uv run python watcher.py
+When you settle on a new long-term dose, update `CURRENT_DOSE_MG` in `config.py` so the form always pre-fills correctly.
+
+### Adding users
+Scroll to the **Access** section at the bottom of the dashboard. Enter a username and password and click Add. No server access required.
+
+### Downloading your data
+Click **⬇ Download CSV** in the top right — saves your full readings as a CSV file.
+
+---
+
+## CSV format
+
+Plain CSV, hand-editable. One row per reading.
+
+```
+timestamp,systolic,diastolic,heart_rate,dose_taken,dose_mg,dose_time,photo_filename,ai_comment
+2026-02-25 08:14:00,111,63,60,False,0,,,Baseline reading. BP and HR well within normal range.
+2026-03-03 13:05:00,107,68,58,True,5,,IMG_8485.HEIC,Slightly below baseline — good sign.
 ```
 
-Then drop a photo of your blood pressure monitor into `watch_folder/`. The watcher will:
-
-1. Detect the new file
-2. Extract the timestamp from EXIF data (or ask you to enter it manually if missing)
-3. Send the image to Claude for reading extraction
-4. Ask whether a dose was taken and at what time
-5. Append a new row to `data/readings.csv`
-
-### Start the dashboard
-
-In a second terminal:
-
-```bash
-uv run python dashboard.py
-```
-
-Open **http://localhost:8050** in your browser. The dashboard auto-refreshes every 15 seconds.
+See `data/readings.example.csv` for a fuller example.
 
 ---
 
@@ -161,46 +180,32 @@ Open **http://localhost:8050** in your browser. The dashboard auto-refreshes eve
 | Green line | Heart rate (lower chart) |
 | ◆ Diamond marker | Reading taken with a dose |
 | ● Circle marker | Reading taken without a dose |
+| Orange dashed line | Dose change |
 | Green band | Normal range |
 | Yellow band | Elevated (>130/85 mmHg) |
 | Red band | High (>140/90 mmHg) |
 | Dotted lines | Your personal baseline |
-| Hover tooltip | All values + AI clinical comment |
+| Hover tooltip | All values + dose + AI comment |
 
 ---
 
-## CSV format
+## Privacy
 
-The data file is plain CSV — open it in Excel, Numbers, or any text editor. You can add or correct entries by hand at any time.
-
-```
-timestamp,systolic,diastolic,heart_rate,dose_taken,dose_time,photo_filename,ai_comment
-2026-02-25 08:14:00,111,63,60,False,,,Baseline reading. BP and HR well within normal range.
-2026-03-01 09:02:00,118,68,65,True,08:30,reading_day1_morning.jpg,Mild elevation on day one...
-```
-
-See `data/readings.example.csv` for a fuller example.
-
----
-
-## A note on privacy
-
-Health data is sensitive. This project is designed with that in mind:
-
-- All data stays **local** — no cloud sync, no external database
-- Photos and readings are **gitignored** and never committed
-- The API sends images to Anthropic for processing — review their [privacy policy](https://www.anthropic.com/privacy) if that matters for your use case
-- The `.env` file with your API key is gitignored
+- All data stays on **your VPS** — no third-party storage
+- Photos are processed by Anthropic's API and not stored — review their [privacy policy](https://www.anthropic.com/privacy)
+- `readings.csv` and `.htpasswd` are gitignored and never committed
+- Dashboard is protected by HTTP Basic Auth over HTTPS
 
 ---
 
 ## Built with
 
 - [Anthropic Claude](https://anthropic.com) — vision extraction + AI comments
-- [Plotly / Dash](https://dash.plotly.com) — interactive dashboard
-- [Watchdog](https://github.com/gorakhargosh/watchdog) — filesystem monitoring
-- [Pillow](https://python-pillow.org) — EXIF extraction
+- [Plotly / Dash](https://dash.plotly.com) — interactive dashboard + file upload
+- [passlib](https://passlib.readthedocs.io) — htpasswd user management
+- [Pillow](https://python-pillow.org) + [pillow-heif](https://github.com/bigcat88/pillow_heif) — image handling + HEIC support
 - [pandas](https://pandas.pydata.org) — CSV handling
+- [gunicorn](https://gunicorn.org) — production WSGI server
 - [uv](https://github.com/astral-sh/uv) — environment management
 
 ---
