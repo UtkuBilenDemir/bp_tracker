@@ -1,0 +1,100 @@
+# PROJECT SPECIFIC
+
+# Sensitive health data — never commit
+watch_folder/*
+!watch_folder/.gitkeep
+
+data/readings.csv
+data/errors.log
+
+# API keys and secrets
+.env
+config_secrets.py
+
+# Claude Code internal
+.claude/
+
+# Personal briefing docs — keep locally, not in public repo
+*.docx
+
+# -----------------------------------------------------------------------------
+# --- Python, Jupyter, env ---
+__pycache__/
+*.pyc
+*.pyo
+*.ipynb_checkpoints/
+.venv/
+
+# --- macOS system files ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# --- Obsidian cache/workspace ---
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+
+# --- macOS folder metadata ---
+.Spotlight-V100
+.Trashes
+.fseventsd
+.apdisk
+
+# --- Media files ---
+*.mp4
+*.mp3
+
+# --- LaTeX auxiliary files ---
+*.fls
+*.fdb_latexmk
+*.nav
+*.snm
+*.vrb
+*.xdv
+*.pdfsync
+*.blg
+*.out
+*.log
+*.bbl
+*.bcf
+*.aux
+*.run.xml
+*.synctex.gz
+*.toc
+*-blx.bib
+*.synctex(busy)
+*.tex~
+
+# --- Editors / Swap / Temp ---
+*.swp
+*.swo
+*~
+.nfs*
+
+# --- Large media files (avoid bloating git history) ---
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.webm
+
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.m4a
+
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+*.iso
+*.dmg
