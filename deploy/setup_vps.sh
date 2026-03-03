@@ -77,7 +77,6 @@ echo "  Service started."
 echo "→ Configuring nginx..."
 cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/bp-tracker
 ln -sf /etc/nginx/sites-available/bp-tracker /etc/nginx/sites-enabled/bp-tracker
-rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 echo "  nginx configured."
 
