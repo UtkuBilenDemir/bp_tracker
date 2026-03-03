@@ -1,0 +1,15 @@
+[Unit]
+Description=BP Tracker Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=ubd
+WorkingDirectory=/home/ubd/bp_tracker
+ExecStart=/home/ubd/bp_tracker/.venv/bin/gunicorn dashboard:server -b 127.0.0.1:8050 --workers 1 --timeout 120
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

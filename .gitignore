@@ -6,6 +6,7 @@ watch_folder/*
 
 data/readings.csv
 data/errors.log
+data/.htpasswd
 
 # API keys and secrets
 .env

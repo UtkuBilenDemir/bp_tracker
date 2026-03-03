@@ -7,6 +7,7 @@ load_dotenv()
 WATCH_FOLDER = "watch_folder/"
 CSV_PATH = "data/readings.csv"
 ERROR_LOG_PATH = "data/errors.log"
+HTPASSWD_PATH = "data/.htpasswd"
 
 # --- API ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
