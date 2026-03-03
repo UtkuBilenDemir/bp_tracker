@@ -34,6 +34,7 @@ CSV_COLUMNS = [
     "diastolic",
     "heart_rate",
     "dose_taken",
+    "dose_mg",
     "dose_time",
     "photo_filename",
     "ai_comment",

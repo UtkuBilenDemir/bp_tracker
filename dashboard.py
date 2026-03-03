@@ -146,6 +146,16 @@ app.layout = html.Div(
                         style={"fontSize": "14px", "paddingTop": "8px"},
                     ),
                 ]),
+                html.Div(style={"flex": "1 1 100px"}, children=[
+                    html.Label("Dose (mg)", style=LABEL),
+                    dcc.Input(
+                        id="dose-mg",
+                        type="number",
+                        value=config.CURRENT_DOSE_MG,
+                        min=0,
+                        style={**INPUT_STYLE, "maxWidth": "100px"},
+                    ),
+                ]),
                 html.Div(style={"flex": "1 1 120px"}, children=[
                     html.Label("Dose time (HH:MM)", style=LABEL),
                     dcc.Input(
@@ -335,12 +345,26 @@ def update_charts(_n, _status):
             f"<b>{r['timestamp'].strftime('%d %b %Y  %H:%M')}</b><br>"
             f"BP: {r['systolic']}/{r['diastolic']} mmHg<br>"
             f"HR: {r['heart_rate']} bpm<br>"
-            + (f"Dose: {config.CURRENT_DOSE_MG} mg  ·  {r['dose_time']}<br>"
+            + (f"Dose: {int(r['dose_mg'])} mg  ·  {r['dose_time']}<br>"
                if r.get("dose_taken") else "No dose<br>")
             + f"<i>{r.get('ai_comment', '')}</i>"
         ), axis=1)
 
         symbols = df["dose_taken"].map(lambda d: "diamond" if d else "circle")
+        # Vertical lines where dose changes
+        dose_series = df["dose_mg"].fillna(0)
+        for i in range(1, len(df)):
+            if dose_series.iloc[i] != dose_series.iloc[i - 1]:
+                ts = df["timestamp"].iloc[i]
+                new_dose = int(dose_series.iloc[i])
+                fig_bp.add_vline(
+                    x=ts.timestamp() * 1000,
+                    line_dash="dash", line_color="#e67e22", opacity=0.6,
+                    annotation_text=f"{new_dose} mg",
+                    annotation_position="top",
+                    annotation_font=dict(size=11, color="#e67e22"),
+                )
+
         for col, name, color in [
             ("systolic", "Systolic", "#e74c3c"),
             ("diastolic", "Diastolic", "#8e44ad"),
@@ -393,11 +417,12 @@ def update_charts(_n, _status):
     State("upload-photo", "contents"),
     State("upload-photo", "filename"),
     State("dose-taken", "value"),
+    State("dose-mg", "value"),
     State("dose-time", "value"),
     State("manual-ts", "value"),
     prevent_initial_call=True,
 )
-def process_reading(n_clicks, contents, filename, dose_taken, dose_time, manual_ts):
+def process_reading(n_clicks, contents, filename, dose_taken, dose_mg, dose_time, manual_ts):
     if not contents:
         return "⚠️ Please select a photo first."
 
@@ -447,6 +472,7 @@ def process_reading(n_clicks, contents, filename, dose_taken, dose_time, manual_
             "diastolic": reading["diastolic"],
             "heart_rate": reading["heart_rate"],
             "dose_taken": bool(dose_taken),
+            "dose_mg": dose_mg if dose_taken else 0,
             "dose_time": dose_time or "",
             "photo_filename": filename or "",
             "ai_comment": reading.get("short_comment", ""),

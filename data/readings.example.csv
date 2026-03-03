@@ -1,6 +1,6 @@
-timestamp,systolic,diastolic,heart_rate,dose_taken,dose_time,photo_filename,ai_comment
-2026-02-25 08:14:00,111,63,60,False,,reading_baseline_morning.jpg,Baseline reading. BP and HR well within normal range.
-2026-03-01 09:02:00,118,68,65,True,08:30,reading_day1_morning.jpg,Mild elevation in systolic on day one. Still within normal range; nothing to flag at this stage.
-2026-03-01 14:45:00,122,71,70,True,08:30,reading_day1_afternoon.jpg,Slight afternoon rise in BP and HR. Worth tracking the trend over coming days.
-2026-03-02 08:55:00,115,66,63,True,08:30,reading_day2_morning.jpg,BP settling closer to baseline by day two. No pronounced cardiovascular reactivity so far.
-2026-03-02 15:10:00,128,74,72,True,08:30,reading_day2_afternoon.jpg,Systolic approaching elevated zone (>130) in the afternoon. Mention to GP if this persists; not a concern yet.
+timestamp,systolic,diastolic,heart_rate,dose_taken,dose_mg,dose_time,photo_filename,ai_comment
+2026-02-25 08:14:00,111,63,60,False,0,,,Baseline reading. BP and HR well within normal range.
+2026-03-01 09:02:00,118,68,65,True,5,08:30,reading_day1_morning.jpg,Mild elevation in systolic on day one. Still within normal range; nothing to flag at this stage.
+2026-03-01 14:45:00,122,71,70,True,5,08:30,reading_day1_afternoon.jpg,Slight afternoon rise in BP and HR. Worth tracking the trend over coming days.
+2026-03-02 08:55:00,115,66,63,True,5,08:30,reading_day2_morning.jpg,BP settling closer to baseline by day two. No pronounced cardiovascular reactivity so far.
+2026-03-10 09:10:00,124,74,72,True,10,08:30,reading_day10_morning.jpg,Dose increased to 10mg. Systolic slightly higher than previous readings — worth monitoring over coming days.
