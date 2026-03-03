@@ -23,7 +23,13 @@ app.layout = html.Div(
     children=[
         html.H2("Blood Pressure Tracker", style={"marginBottom": "4px"}),
         html.P(
-            f"Baseline: {config.BASELINE_SYSTOLIC}/{config.BASELINE_DIASTOLIC} mmHg  ·  HR {config.BASELINE_HR} bpm",
+            [
+                f"Baseline: {config.BASELINE_SYSTOLIC}/{config.BASELINE_DIASTOLIC} mmHg  ·  HR {config.BASELINE_HR} bpm",
+                html.Span(
+                    f"  ·  Current dose: {config.CURRENT_DOSE_MG} mg/day",
+                    style={"color": "#e67e22", "fontWeight": "500"},
+                ),
+            ],
             style={"color": "#888", "marginTop": "0"},
         ),
         dcc.Graph(id="bp-chart", config={"displayModeBar": False}),
@@ -116,7 +122,7 @@ def update_charts(_n):
                 f"<b>{r['timestamp'].strftime('%d %b %Y  %H:%M')}</b><br>"
                 f"BP: {r['systolic']}/{r['diastolic']} mmHg<br>"
                 f"HR: {r['heart_rate']} bpm<br>"
-                + (f"Dose taken: {r['dose_time']}<br>" if r.get("dose_taken") else "No dose<br>")
+                + (f"Dose: {config.CURRENT_DOSE_MG} mg  ·  taken {r['dose_time']}<br>" if r.get("dose_taken") else "No dose<br>")
                 + f"<i>{r.get('ai_comment', '')}</i>"
             ),
             axis=1,

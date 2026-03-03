@@ -12,6 +12,9 @@ ERROR_LOG_PATH = "data/errors.log"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 VISION_MODEL = "claude-sonnet-4-20250514"
 
+# --- Current dose (update when titration changes) ---
+CURRENT_DOSE_MG = 5
+
 # --- Baseline (from medical letter) ---
 BASELINE_SYSTOLIC = 111
 BASELINE_DIASTOLIC = 63
