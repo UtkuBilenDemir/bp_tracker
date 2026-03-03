@@ -1,5 +1,7 @@
 # BP Tracker
 
+> 🤖 *This README was written by Claude Code. If it sounds suspiciously well-structured and slightly too enthusiastic about CSV files, that's why.*
+
 > A personal experiment in human–AI collaboration, built entirely through conversation with **Claude Code**.
 
 This is a lightweight, local blood pressure tracking system. Drop a photo of your BP monitor into a folder — the app reads the display, logs the values, and renders them in a live dashboard. No manual transcription, no cloud services, no subscriptions beyond an Anthropic API key.
