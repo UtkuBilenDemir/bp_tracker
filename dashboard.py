@@ -4,6 +4,8 @@ BP Tracker — Plotly/Dash dashboard.
 
 Features:
   - Photo upload → Claude vision → CSV logging
+  - Manual entry without a photo
+  - Delete last reading (with confirmation)
   - Blood pressure + heart rate charts
   - CSV download
   - User management (add/remove basic-auth users)
@@ -13,6 +15,8 @@ Prod: gunicorn dashboard:server -b 127.0.0.1:8050 --workers 1 --timeout 120
 """
 
 import base64
+import csv as csv_mod
+import json
 import os
 import tempfile
 from datetime import datetime
@@ -38,7 +42,7 @@ import config
 # ---------------------------------------------------------------------------
 
 app = Dash(__name__, title="BP Tracker")
-server = app.server  # gunicorn entry point
+server = app.server
 
 # ---------------------------------------------------------------------------
 # Styles
@@ -71,6 +75,32 @@ BTN = {
 BTN_PRIMARY = {**BTN, "background": "#2c3e50", "color": "#fff"}
 BTN_SECONDARY = {**BTN, "background": "#f0f0f0", "color": "#333"}
 BTN_DANGER = {**BTN, "background": "#e74c3c", "color": "#fff"}
+BTN_WARN = {**BTN, "background": "#e67e22", "color": "#fff"}
+
+DOSE_FIELDS = html.Div(
+    style={"display": "flex", "gap": "16px", "marginBottom": "16px", "flexWrap": "wrap"},
+    children=[
+        html.Div(style={"flex": "0 0 auto"}, children=[
+            html.Label("Dose taken today?", style=LABEL),
+            dcc.Checklist(
+                id="dose-taken",
+                options=[{"label": "  Yes", "value": "yes"}],
+                value=[],
+                style={"fontSize": "14px", "paddingTop": "8px"},
+            ),
+        ]),
+        html.Div(style={"flex": "1 1 90px"}, children=[
+            html.Label("Dose (mg)", style=LABEL),
+            dcc.Input(id="dose-mg", type="number", value=config.CURRENT_DOSE_MG, min=0,
+                      style={**INPUT_STYLE, "maxWidth": "100px"}),
+        ]),
+        html.Div(style={"flex": "1 1 120px"}, children=[
+            html.Label("Dose time (HH:MM)", style=LABEL),
+            dcc.Input(id="dose-time", type="text", placeholder="e.g. 08:30",
+                      style={**INPUT_STYLE, "maxWidth": "140px"}),
+        ]),
+    ],
+)
 
 # ---------------------------------------------------------------------------
 # Layout
@@ -87,6 +117,8 @@ app.layout = html.Div(
     },
     children=[
 
+        dcc.Store(id="confirm-delete-store", data=False),
+
         # ── Header ──────────────────────────────────────────────────────────
         html.Div(style=CARD, children=[
             html.Div(style={"display": "flex", "justifyContent": "space-between", "alignItems": "flex-start"}, children=[
@@ -96,87 +128,102 @@ app.layout = html.Div(
                         [
                             f"Baseline: {config.BASELINE_SYSTOLIC}/{config.BASELINE_DIASTOLIC} mmHg  ·  "
                             f"HR {config.BASELINE_HR} bpm  ·  ",
-                            html.Span(
-                                f"Dose: {config.CURRENT_DOSE_MG} mg/day",
-                                style={"color": "#e67e22", "fontWeight": "500"},
-                            ),
+                            html.Span(f"Dose: {config.CURRENT_DOSE_MG} mg/day",
+                                      style={"color": "#e67e22", "fontWeight": "500"}),
                         ],
                         style={"margin": 0, "color": "#888", "fontSize": "14px"},
                     ),
                 ]),
-                html.Button(
-                    "⬇ Download CSV",
-                    id="btn-download",
-                    style=BTN_SECONDARY,
-                ),
+                html.Button("⬇ Download CSV", id="btn-download", style=BTN_SECONDARY),
             ]),
             dcc.Download(id="download-csv"),
         ]),
 
-        # ── Upload ──────────────────────────────────────────────────────────
+        # ── Add Reading ──────────────────────────────────────────────────────
         html.Div(style=CARD, children=[
-            html.H2("Add Reading", style={"margin": "0 0 16px", "fontSize": "18px"}),
-            dcc.Upload(
-                id="upload-photo",
-                children=html.Div([
-                    html.Span("📷  ", style={"fontSize": "24px"}),
-                    html.Span("Drop a photo here or "),
-                    html.A("browse", style={"color": "#2980b9", "cursor": "pointer"}),
-                ]),
-                style={
-                    "border": "2px dashed #ccc",
-                    "borderRadius": "10px",
-                    "padding": "32px",
-                    "textAlign": "center",
-                    "cursor": "pointer",
-                    "marginBottom": "16px",
-                    "color": "#888",
-                },
-                accept="image/*",
+            html.H2("Add Reading", style={"margin": "0 0 12px", "fontSize": "18px"}),
+
+            dcc.RadioItems(
+                id="entry-mode",
+                options=[
+                    {"label": "  📷  From photo", "value": "photo"},
+                    {"label": "  ✏️  Enter manually", "value": "manual"},
+                ],
+                value="photo",
+                inline=True,
+                style={"fontSize": "14px", "marginBottom": "20px"},
             ),
 
-            # Dose row
-            html.Div(style={"display": "flex", "gap": "16px", "marginBottom": "16px", "flexWrap": "wrap"}, children=[
-                html.Div(style={"flex": "0 0 auto"}, children=[
-                    html.Label("Dose taken today?", style=LABEL),
-                    dcc.Checklist(
-                        id="dose-taken",
-                        options=[{"label": "  Yes", "value": "yes"}],
-                        value=[],
-                        style={"fontSize": "14px", "paddingTop": "8px"},
-                    ),
-                ]),
-                html.Div(style={"flex": "1 1 100px"}, children=[
-                    html.Label("Dose (mg)", style=LABEL),
-                    dcc.Input(
-                        id="dose-mg",
-                        type="number",
-                        value=config.CURRENT_DOSE_MG,
-                        min=0,
-                        style={**INPUT_STYLE, "maxWidth": "100px"},
-                    ),
-                ]),
-                html.Div(style={"flex": "1 1 120px"}, children=[
-                    html.Label("Dose time (HH:MM)", style=LABEL),
-                    dcc.Input(
-                        id="dose-time",
-                        type="text",
-                        placeholder="e.g. 08:30",
-                        style={**INPUT_STYLE, "maxWidth": "140px"},
-                    ),
-                ]),
-                html.Div(style={"flex": "2 1 200px"}, children=[
-                    html.Label("Override timestamp (if no EXIF)", style=LABEL),
-                    dcc.Input(
-                        id="manual-ts",
-                        type="text",
-                        placeholder="YYYY-MM-DD HH:MM  (optional)",
-                        style=INPUT_STYLE,
-                    ),
+            # ── Photo mode ──────────────────────────────────────────────────
+            html.Div(id="photo-section", children=[
+                dcc.Upload(
+                    id="upload-photo",
+                    children=html.Div([
+                        html.Span("📷  ", style={"fontSize": "24px"}),
+                        html.Span("Drop a photo here or "),
+                        html.A("browse", style={"color": "#2980b9", "cursor": "pointer"}),
+                    ]),
+                    style={
+                        "border": "2px dashed #ccc",
+                        "borderRadius": "10px",
+                        "padding": "32px",
+                        "textAlign": "center",
+                        "cursor": "pointer",
+                        "marginBottom": "16px",
+                        "color": "#888",
+                    },
+                    accept="image/*",
+                ),
+                DOSE_FIELDS,
+                html.Div(style={"display": "flex", "gap": "12px", "alignItems": "center", "flexWrap": "wrap"}, children=[
+                    html.Div(style={"flex": "2 1 200px"}, children=[
+                        html.Label("Override timestamp (if no EXIF)", style=LABEL),
+                        dcc.Input(id="manual-ts", type="text",
+                                  placeholder="YYYY-MM-DD HH:MM  (optional)", style=INPUT_STYLE),
+                    ]),
+                    html.Div(style={"paddingTop": "20px"}, children=[
+                        html.Button("Process Reading", id="btn-submit", style=BTN_PRIMARY),
+                    ]),
                 ]),
             ]),
 
-            html.Button("Process Reading", id="btn-submit", style=BTN_PRIMARY),
+            # ── Manual mode ─────────────────────────────────────────────────
+            html.Div(id="manual-section", style={"display": "none"}, children=[
+                html.Div(style={"display": "flex", "gap": "16px", "marginBottom": "16px", "flexWrap": "wrap"}, children=[
+                    html.Div(style={"flex": "2 1 180px"}, children=[
+                        html.Label("Timestamp (YYYY-MM-DD HH:MM)", style=LABEL),
+                        dcc.Input(id="manual-timestamp", type="text",
+                                  placeholder="e.g. 2026-03-04 08:30", style=INPUT_STYLE),
+                    ]),
+                    html.Div(style={"flex": "1 1 80px"}, children=[
+                        html.Label("Systolic", style=LABEL),
+                        dcc.Input(id="manual-systolic", type="number", placeholder="e.g. 118",
+                                  style=INPUT_STYLE),
+                    ]),
+                    html.Div(style={"flex": "1 1 80px"}, children=[
+                        html.Label("Diastolic", style=LABEL),
+                        dcc.Input(id="manual-diastolic", type="number", placeholder="e.g. 72",
+                                  style=INPUT_STYLE),
+                    ]),
+                    html.Div(style={"flex": "1 1 80px"}, children=[
+                        html.Label("Heart rate", style=LABEL),
+                        dcc.Input(id="manual-hr", type="number", placeholder="e.g. 65",
+                                  style=INPUT_STYLE),
+                    ]),
+                ]),
+                DOSE_FIELDS,
+                html.Div(style={"display": "flex", "gap": "16px", "marginBottom": "16px", "flexWrap": "wrap"}, children=[
+                    html.Div(style={"flex": "3 1 240px"}, children=[
+                        html.Label("Note (optional)", style=LABEL),
+                        dcc.Input(id="manual-comment", type="text",
+                                  placeholder="Any observations...", style=INPUT_STYLE),
+                    ]),
+                    html.Div(style={"paddingTop": "20px"}, children=[
+                        html.Button("Save Reading", id="btn-manual-submit", style=BTN_PRIMARY),
+                    ]),
+                ]),
+            ]),
+
             html.Div(id="upload-status", style={"marginTop": "12px", "fontSize": "14px"}),
         ]),
 
@@ -190,11 +237,22 @@ app.layout = html.Div(
 
         dcc.Interval(id="refresh", interval=15_000, n_intervals=0),
 
-        # ── User management ─────────────────────────────────────────────────
+        # ── Data management ──────────────────────────────────────────────────
+        html.Div(style=CARD, children=[
+            html.H2("Data", style={"margin": "0 0 12px", "fontSize": "18px"}),
+            html.Div(id="last-reading-info", style={"fontSize": "14px", "color": "#555", "marginBottom": "12px"}),
+            html.Div(style={"display": "flex", "gap": "10px"}, children=[
+                html.Button("🗑 Delete Last Reading", id="btn-delete", style=BTN_WARN),
+                html.Button("✓ Confirm Delete", id="btn-confirm-delete",
+                            style={**BTN_DANGER, "display": "none"}),
+            ]),
+            html.Div(id="delete-status", style={"marginTop": "10px", "fontSize": "14px"}),
+        ]),
+
+        # ── User management ──────────────────────────────────────────────────
         html.Div(style=CARD, children=[
             html.H2("Access", style={"margin": "0 0 16px", "fontSize": "18px"}),
             html.Div(id="users-list", style={"marginBottom": "16px", "fontSize": "14px", "color": "#555"}),
-
             html.Div(style={"display": "flex", "gap": "12px", "flexWrap": "wrap", "alignItems": "flex-end"}, children=[
                 html.Div(style={"flex": "1 1 140px"}, children=[
                     html.Label("Username", style=LABEL),
@@ -204,7 +262,7 @@ app.layout = html.Div(
                     html.Label("Password", style=LABEL),
                     dcc.Input(id="new-password", type="password", placeholder="password", style=INPUT_STYLE),
                 ]),
-                html.Div(style={"display": "flex", "gap": "8px", "paddingBottom": "1px"}, children=[
+                html.Div(style={"display": "flex", "gap": "8px"}, children=[
                     html.Button("Add", id="btn-add-user", style=BTN_PRIMARY),
                     html.Button("Remove", id="btn-remove-user", style=BTN_DANGER),
                 ]),
@@ -267,15 +325,12 @@ Fields:
         messages=[{
             "role": "user",
             "content": [
-                {
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data},
-                },
+                {"type": "image",
+                 "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
                 {"type": "text", "text": prompt},
             ],
         }],
     )
-    import json
     raw = response.content[0].text.strip()
     result = json.loads(raw)
     if result.get("confidence") == "low":
@@ -284,7 +339,6 @@ Fields:
 
 
 def append_to_csv(row: dict) -> None:
-    import csv as csv_mod
     csv_path = Path(config.CSV_PATH)
     write_header = not csv_path.exists()
     with open(csv_path, "a", newline="") as f:
@@ -294,7 +348,7 @@ def append_to_csv(row: dict) -> None:
         writer.writerow(row)
 
 
-def bp_zone_shapes(df: pd.DataFrame) -> list:
+def bp_zone_shapes(df):
     if df.empty:
         return []
     x0, x1 = df["timestamp"].min(), df["timestamp"].max()
@@ -309,13 +363,28 @@ def bp_zone_shapes(df: pd.DataFrame) -> list:
     ]
 
 
-def bp_zone_annotations() -> list:
+def bp_zone_annotations():
     return [
         dict(xref="paper", yref="y", x=1.01, y=config.ELEVATED_SYSTOLIC,
              text="Elevated", showarrow=False, font=dict(size=10, color="#b8a100"), xanchor="left"),
         dict(xref="paper", yref="y", x=1.01, y=config.HIGH_SYSTOLIC,
              text="High", showarrow=False, font=dict(size=10, color="#c0392b"), xanchor="left"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — toggle entry mode
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("photo-section", "style"),
+    Output("manual-section", "style"),
+    Input("entry-mode", "value"),
+)
+def toggle_mode(mode):
+    if mode == "photo":
+        return {}, {"display": "none"}
+    return {"display": "none"}, {}
 
 
 # ---------------------------------------------------------------------------
@@ -326,9 +395,10 @@ def bp_zone_annotations() -> list:
     Output("bp-chart", "figure"),
     Output("hr-chart", "figure"),
     Input("refresh", "n_intervals"),
-    Input("upload-status", "children"),  # re-render after new reading
+    Input("upload-status", "children"),
+    Input("delete-status", "children"),
 )
-def update_charts(_n, _status):
+def update_charts(_n, _upload, _delete):
     df = load_data()
 
     fig_bp = go.Figure()
@@ -351,24 +421,18 @@ def update_charts(_n, _status):
         ), axis=1)
 
         symbols = df["dose_taken"].map(lambda d: "diamond" if d else "circle")
-        # Vertical lines where dose changes
         dose_series = df["dose_mg"].fillna(0)
         for i in range(1, len(df)):
             if dose_series.iloc[i] != dose_series.iloc[i - 1]:
-                ts = df["timestamp"].iloc[i]
-                new_dose = int(dose_series.iloc[i])
                 fig_bp.add_vline(
-                    x=ts.timestamp() * 1000,
+                    x=df["timestamp"].iloc[i].timestamp() * 1000,
                     line_dash="dash", line_color="#e67e22", opacity=0.6,
-                    annotation_text=f"{new_dose} mg",
+                    annotation_text=f"{int(dose_series.iloc[i])} mg",
                     annotation_position="top",
                     annotation_font=dict(size=11, color="#e67e22"),
                 )
 
-        for col, name, color in [
-            ("systolic", "Systolic", "#e74c3c"),
-            ("diastolic", "Diastolic", "#8e44ad"),
-        ]:
+        for col, name, color in [("systolic", "Systolic", "#e74c3c"), ("diastolic", "Diastolic", "#8e44ad")]:
             fig_bp.add_trace(go.Scatter(
                 x=df["timestamp"], y=df[col], mode="lines+markers", name=name,
                 line=dict(color=color, width=2),
@@ -408,7 +472,7 @@ def update_charts(_n, _status):
 
 
 # ---------------------------------------------------------------------------
-# Callbacks — upload / process
+# Callbacks — photo upload
 # ---------------------------------------------------------------------------
 
 @callback(
@@ -422,31 +486,25 @@ def update_charts(_n, _status):
     State("manual-ts", "value"),
     prevent_initial_call=True,
 )
-def process_reading(n_clicks, contents, filename, dose_taken, dose_mg, dose_time, manual_ts):
+def process_reading(_, contents, filename, dose_taken, dose_mg, dose_time, manual_ts):
     if not contents:
         return "⚠️ Please select a photo first."
 
-    # Decode image
-    content_type, content_string = contents.split(",", 1)
+    _, content_string = contents.split(",", 1)
     image_bytes = base64.b64decode(content_string)
-
-    # Determine suffix
     suffix = ".heic" if filename and filename.lower().endswith(".heic") else ".jpg"
+
     tmp_orig = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     tmp_jpeg = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
     try:
-        # Save uploaded file
         tmp_orig.write(image_bytes)
         tmp_orig.flush()
         tmp_orig.close()
 
-        # Convert to JPEG for API (handles HEIC + normalises format)
         img = Image.open(tmp_orig.name)
-        img = img.convert("RGB")
-        img.save(tmp_jpeg.name, "JPEG", quality=90)
+        img.convert("RGB").save(tmp_jpeg.name, "JPEG", quality=90)
         tmp_jpeg.close()
 
-        # Timestamp: EXIF → manual override → error
         ts = get_exif_timestamp(tmp_orig.name)
         if ts:
             ts_source = f"EXIF ({ts.strftime('%d %b %Y %H:%M')})"
@@ -457,16 +515,14 @@ def process_reading(n_clicks, contents, filename, dose_taken, dose_mg, dose_time
             except ValueError:
                 return "⚠️ Invalid timestamp format. Use YYYY-MM-DD HH:MM"
         else:
-            return "⚠️ No EXIF timestamp found. Please enter the date/time manually."
+            return "⚠️ No EXIF timestamp found. Enter date/time in the override field."
 
-        # Vision extraction
         try:
             reading = extract_reading_via_vision(tmp_jpeg.name)
         except Exception as e:
             return f"⚠️ Vision extraction failed: {e}"
 
-        # Append to CSV
-        row = {
+        append_to_csv({
             "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
             "systolic": reading["systolic"],
             "diastolic": reading["diastolic"],
@@ -476,25 +532,104 @@ def process_reading(n_clicks, contents, filename, dose_taken, dose_mg, dose_time
             "dose_time": dose_time or "",
             "photo_filename": filename or "",
             "ai_comment": reading.get("short_comment", ""),
-        }
-        append_to_csv(row)
+        })
 
         warnings = f"  ⚠️ {reading['any_warnings']}" if reading.get("any_warnings") else ""
-        return (
-            f"✅ Saved — {reading['systolic']}/{reading['diastolic']} mmHg, "
-            f"HR {reading['heart_rate']} bpm  ·  timestamp from {ts_source}"
-            f"{warnings}"
-        )
+        return (f"✅ Saved — {reading['systolic']}/{reading['diastolic']} mmHg, "
+                f"HR {reading['heart_rate']} bpm  ·  {ts_source}{warnings}")
 
     except Exception as e:
         return f"⚠️ Unexpected error: {e}"
-
     finally:
         for p in (tmp_orig.name, tmp_jpeg.name):
             try:
                 os.unlink(p)
             except OSError:
                 pass
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — manual entry
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("upload-status", "children", allow_duplicate=True),
+    Input("btn-manual-submit", "n_clicks"),
+    State("manual-timestamp", "value"),
+    State("manual-systolic", "value"),
+    State("manual-diastolic", "value"),
+    State("manual-hr", "value"),
+    State("dose-taken", "value"),
+    State("dose-mg", "value"),
+    State("dose-time", "value"),
+    State("manual-comment", "value"),
+    prevent_initial_call=True,
+)
+def save_manual_reading(_, timestamp, systolic, diastolic, hr, dose_taken, dose_mg, dose_time, comment):
+    if not all([timestamp, systolic, diastolic, hr]):
+        return "⚠️ Timestamp, systolic, diastolic and heart rate are all required."
+    try:
+        ts = datetime.strptime(timestamp.strip(), "%Y-%m-%d %H:%M")
+    except ValueError:
+        return "⚠️ Invalid timestamp format. Use YYYY-MM-DD HH:MM"
+
+    append_to_csv({
+        "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
+        "systolic": int(systolic),
+        "diastolic": int(diastolic),
+        "heart_rate": int(hr),
+        "dose_taken": bool(dose_taken),
+        "dose_mg": dose_mg if dose_taken else 0,
+        "dose_time": dose_time or "",
+        "photo_filename": "",
+        "ai_comment": comment or "",
+    })
+    return f"✅ Saved — {int(systolic)}/{int(diastolic)} mmHg, HR {int(hr)} bpm  ·  manual entry"
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — delete last reading
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("last-reading-info", "children"),
+    Output("btn-confirm-delete", "style"),
+    Output("confirm-delete-store", "data"),
+    Input("btn-delete", "n_clicks"),
+    Input("delete-status", "children"),
+    Input("refresh", "n_intervals"),
+    prevent_initial_call=False,
+)
+def prepare_delete(n_clicks, _status, _n):
+    from dash import ctx
+    df = load_data()
+    if df.empty:
+        return "No readings yet.", {**BTN_DANGER, "display": "none"}, False
+
+    last = df.iloc[-1]
+    info = (f"Last reading: {last['timestamp'].strftime('%d %b %Y  %H:%M')}  ·  "
+            f"{int(last['systolic'])}/{int(last['diastolic'])} mmHg  ·  HR {int(last['heart_rate'])} bpm")
+
+    if ctx.triggered_id == "btn-delete" and n_clicks:
+        return info, BTN_DANGER, True
+
+    return info, {**BTN_DANGER, "display": "none"}, False
+
+
+@callback(
+    Output("delete-status", "children"),
+    Input("btn-confirm-delete", "n_clicks"),
+    prevent_initial_call=True,
+)
+def confirm_delete(_):
+    df = load_data()
+    if df.empty:
+        return "⚠️ Nothing to delete."
+    last = df.iloc[-1]
+    df = df.iloc[:-1]
+    df.to_csv(config.CSV_PATH, index=False)
+    return (f"🗑 Deleted: {last['timestamp'].strftime('%d %b %Y %H:%M')}  ·  "
+            f"{int(last['systolic'])}/{int(last['diastolic'])} mmHg")
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +641,7 @@ def process_reading(n_clicks, contents, filename, dose_taken, dose_mg, dose_time
     Input("btn-download", "n_clicks"),
     prevent_initial_call=True,
 )
-def download_csv(_n):
+def download_csv(_):
     return dcc.send_file(config.CSV_PATH, filename="bp_readings.csv")
 
 
@@ -532,9 +667,7 @@ def refresh_users_list(_n, _status):
     try:
         ht = load_htpasswd()
         users = ht.users()
-        if not users:
-            return "No users configured."
-        return f"Current users: {', '.join(sorted(users))}"
+        return f"Current users: {', '.join(sorted(users))}" if users else "No users configured."
     except Exception:
         return "Could not load user list."
 
@@ -547,11 +680,10 @@ def refresh_users_list(_n, _status):
     State("new-password", "value"),
     prevent_initial_call=True,
 )
-def manage_users(add_clicks, remove_clicks, username, password):
+def manage_users(_, __, username, password):
     from dash import ctx
     if not username or not username.strip():
         return "⚠️ Username is required."
-
     username = username.strip()
     ht = load_htpasswd()
 
