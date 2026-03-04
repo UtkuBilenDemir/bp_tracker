@@ -411,10 +411,11 @@ def update_charts(_n, _upload, _delete):
             fig_bp.add_hline(y=y, line_dash="dot", line_color=color, opacity=0.5,
                              annotation_text=label, annotation_position="bottom right")
 
+        hr_str = lambda r: f"{int(r['heart_rate'])} bpm" if pd.notna(r.get("heart_rate")) else "HR unknown"
         hover = df.apply(lambda r: (
             f"<b>{r['timestamp'].strftime('%d %b %Y  %H:%M')}</b><br>"
             f"BP: {r['systolic']}/{r['diastolic']} mmHg<br>"
-            f"HR: {r['heart_rate']} bpm<br>"
+            f"HR: {hr_str(r)}<br>"
             + (f"Dose: {int(r['dose_mg'])} mg  ·  {r['dose_time']}<br>"
                if r.get("dose_taken") else "No dose<br>")
             + f"<i>{r.get('ai_comment', '')}</i>"
@@ -489,6 +490,12 @@ def update_charts(_n, _upload, _delete):
 def process_reading(_, contents, filename, dose_taken, dose_mg, dose_time, manual_ts):
     if not contents:
         return "⚠️ Please select a photo first."
+
+    # Duplicate check by filename
+    if filename:
+        df_existing = load_data()
+        if not df_existing.empty and filename in df_existing["photo_filename"].values:
+            return f"⚠️ '{filename}' has already been recorded. Use manual entry to add another reading."
 
     _, content_string = contents.split(",", 1)
     image_bytes = base64.b64decode(content_string)
@@ -607,8 +614,9 @@ def prepare_delete(n_clicks, _status, _n):
         return "No readings yet.", {**BTN_DANGER, "display": "none"}, False
 
     last = df.iloc[-1]
+    hr = f"HR {int(last['heart_rate'])} bpm" if pd.notna(last.get("heart_rate")) else ""
     info = (f"Last reading: {last['timestamp'].strftime('%d %b %Y  %H:%M')}  ·  "
-            f"{int(last['systolic'])}/{int(last['diastolic'])} mmHg  ·  HR {int(last['heart_rate'])} bpm")
+            f"{int(last['systolic'])}/{int(last['diastolic'])} mmHg  ·  {hr}")
 
     if ctx.triggered_id == "btn-delete" and n_clicks:
         return info, BTN_DANGER, True
