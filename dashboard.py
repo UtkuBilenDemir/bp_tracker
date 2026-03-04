@@ -25,7 +25,7 @@ from pathlib import Path
 import anthropic
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, callback, dcc, html, no_update
+from dash import Dash, Input, Output, State, callback, dash_table, dcc, html, no_update
 from passlib.apache import HtpasswdFile
 from PIL import Image, ExifTags, ImageOps
 
@@ -230,6 +230,12 @@ app.layout = html.Div(
 
         dcc.Interval(id="refresh", interval=15_000, n_intervals=0),
 
+        # ── Readings table ───────────────────────────────────────────────────
+        html.Div(style=CARD, children=[
+            html.H2("Readings", style={"margin": "0 0 16px", "fontSize": "18px"}),
+            html.Div(id="readings-table"),
+        ]),
+
         # ── Data management ──────────────────────────────────────────────────
         html.Div(style=CARD, children=[
             html.H2("Data", style={"margin": "0 0 12px", "fontSize": "18px"}),
@@ -354,6 +360,24 @@ def append_to_csv(row: dict) -> None:
         writer.writerow(row)
 
 
+def wrap_hover(text, width=52):
+    """Break long text into lines for hover labels."""
+    if not text:
+        return ""
+    words = str(text).split()
+    lines, cur, length = [], [], 0
+    for word in words:
+        if length + len(word) > width and cur:
+            lines.append(" ".join(cur))
+            cur, length = [word], len(word)
+        else:
+            cur.append(word)
+            length += len(word) + 1
+    if cur:
+        lines.append(" ".join(cur))
+    return "<br>".join(lines)
+
+
 def bp_zone_shapes(df):
     if df.empty:
         return []
@@ -427,7 +451,7 @@ def update_charts(_n, _upload, _manual, _delete):
             f"HR: {hr_str(r)}<br>"
             + (f"Dose: {int(r['dose_mg'])} mg  ·  {r['dose_time']}<br>"
                if r.get("dose_taken") else "No dose<br>")
-            + f"<i>{r.get('ai_comment', '')}</i>"
+            + f"<i>{wrap_hover(r.get('ai_comment', ''))}</i>"
         ), axis=1)
 
         symbols = df["dose_taken"].map(lambda d: "diamond" if d else "circle")
@@ -453,8 +477,9 @@ def update_charts(_n, _upload, _manual, _delete):
     fig_bp.update_layout(
         title="Blood Pressure over Time", yaxis_title="mmHg",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        hovermode="x unified", plot_bgcolor="white", paper_bgcolor="white",
+        hovermode="closest", plot_bgcolor="white", paper_bgcolor="white",
         margin=dict(r=80), height=360,
+        hoverlabel=dict(bgcolor="white", bordercolor="#ccc", font_size=13, align="left"),
     )
     fig_bp.update_xaxes(showgrid=True, gridcolor="#f0f0f0")
     fig_bp.update_yaxes(showgrid=True, gridcolor="#f0f0f0", range=[40, 200])
@@ -472,13 +497,108 @@ def update_charts(_n, _upload, _manual, _delete):
 
     fig_hr.update_layout(
         title="Heart Rate over Time", yaxis_title="bpm",
-        hovermode="x unified", plot_bgcolor="white", paper_bgcolor="white",
+        hovermode="closest", plot_bgcolor="white", paper_bgcolor="white",
         margin=dict(r=80), height=240,
+        hoverlabel=dict(bgcolor="white", bordercolor="#ccc", font_size=13),
     )
     fig_hr.update_xaxes(showgrid=True, gridcolor="#f0f0f0")
     fig_hr.update_yaxes(showgrid=True, gridcolor="#f0f0f0", range=[40, 140])
 
     return fig_bp, fig_hr
+
+
+# ---------------------------------------------------------------------------
+# Callbacks — readings table
+# ---------------------------------------------------------------------------
+
+@callback(
+    Output("readings-table", "children"),
+    Input("refresh", "n_intervals"),
+    Input("upload-status", "children"),
+    Input("manual-status", "children"),
+    Input("delete-status", "children"),
+)
+def update_table(_n, _upload, _manual, _delete):
+    df = load_data()
+    if df.empty:
+        return html.P("No readings yet.", style={"color": "#888", "fontSize": "14px"})
+
+    display = df.copy()
+    display["timestamp"] = display["timestamp"].dt.strftime("%d %b %Y  %H:%M")
+    display["dose_taken"] = display["dose_taken"].map(lambda v: "Yes" if v else "No")
+    display["dose_mg"] = display["dose_mg"].fillna(0).astype(int)
+    display["heart_rate"] = display["heart_rate"].apply(
+        lambda v: int(v) if pd.notna(v) else ""
+    )
+    display = display.iloc[::-1].reset_index(drop=True)  # newest first
+
+    columns = [
+        {"name": "Date & Time",  "id": "timestamp"},
+        {"name": "SYS",          "id": "systolic"},
+        {"name": "DIA",          "id": "diastolic"},
+        {"name": "HR",           "id": "heart_rate"},
+        {"name": "Dose?",        "id": "dose_taken"},
+        {"name": "mg",           "id": "dose_mg"},
+        {"name": "Dose time",    "id": "dose_time"},
+        {"name": "AI note",      "id": "ai_comment"},
+    ]
+
+    style_data_conditional = [
+        # systolic zones
+        {"if": {"filter_query": f"{{systolic}} >= {config.HIGH_SYSTOLIC}", "column_id": "systolic"},
+         "backgroundColor": "rgba(255,99,71,0.18)", "color": "#c0392b", "fontWeight": "600"},
+        {"if": {"filter_query": f"{{systolic}} >= {config.ELEVATED_SYSTOLIC} && {{systolic}} < {config.HIGH_SYSTOLIC}", "column_id": "systolic"},
+         "backgroundColor": "rgba(255,221,87,0.25)", "color": "#7d6608"},
+        {"if": {"filter_query": f"{{systolic}} < {config.ELEVATED_SYSTOLIC}", "column_id": "systolic"},
+         "backgroundColor": "rgba(72,199,142,0.15)", "color": "#1e6b3a"},
+        # diastolic zones
+        {"if": {"filter_query": f"{{diastolic}} >= {config.HIGH_DIASTOLIC}", "column_id": "diastolic"},
+         "backgroundColor": "rgba(255,99,71,0.18)", "color": "#c0392b", "fontWeight": "600"},
+        {"if": {"filter_query": f"{{diastolic}} >= {config.ELEVATED_DIASTOLIC} && {{diastolic}} < {config.HIGH_DIASTOLIC}", "column_id": "diastolic"},
+         "backgroundColor": "rgba(255,221,87,0.25)", "color": "#7d6608"},
+        {"if": {"filter_query": f"{{diastolic}} < {config.ELEVATED_DIASTOLIC}", "column_id": "diastolic"},
+         "backgroundColor": "rgba(72,199,142,0.15)", "color": "#1e6b3a"},
+        # alternating rows
+        {"if": {"row_index": "odd"}, "backgroundColor": "#fafafa"},
+    ]
+
+    return dash_table.DataTable(
+        data=display[["timestamp","systolic","diastolic","heart_rate","dose_taken","dose_mg","dose_time","ai_comment"]].to_dict("records"),
+        columns=columns,
+        style_table={"overflowX": "auto"},
+        style_cell={
+            "fontFamily": "system-ui, -apple-system, sans-serif",
+            "fontSize": "13px",
+            "padding": "8px 12px",
+            "textAlign": "left",
+            "border": "none",
+            "maxWidth": "280px",
+            "overflow": "hidden",
+            "textOverflow": "ellipsis",
+            "whiteSpace": "normal",
+        },
+        style_cell_conditional=[
+            {"if": {"column_id": c}, "textAlign": "center", "maxWidth": "60px"}
+            for c in ["systolic", "diastolic", "heart_rate", "dose_mg"]
+        ],
+        style_header={
+            "backgroundColor": "#f0f0f0",
+            "fontWeight": "600",
+            "fontSize": "12px",
+            "color": "#555",
+            "border": "none",
+            "padding": "8px 12px",
+        },
+        style_data_conditional=style_data_conditional,
+        style_data={"border": "none"},
+        page_size=20,
+        sort_action="native",
+        tooltip_data=[
+            {"ai_comment": {"value": row.get("ai_comment", "") or "", "type": "markdown"}}
+            for row in display.to_dict("records")
+        ],
+        tooltip_duration=None,
+    )
 
 
 # ---------------------------------------------------------------------------
