@@ -77,30 +77,6 @@ BTN_SECONDARY = {**BTN, "background": "#f0f0f0", "color": "#333"}
 BTN_DANGER = {**BTN, "background": "#e74c3c", "color": "#fff"}
 BTN_WARN = {**BTN, "background": "#e67e22", "color": "#fff"}
 
-DOSE_FIELDS = html.Div(
-    style={"display": "flex", "gap": "16px", "marginBottom": "16px", "flexWrap": "wrap"},
-    children=[
-        html.Div(style={"flex": "0 0 auto"}, children=[
-            html.Label("Dose taken today?", style=LABEL),
-            dcc.Checklist(
-                id="dose-taken",
-                options=[{"label": "  Yes", "value": "yes"}],
-                value=[],
-                style={"fontSize": "14px", "paddingTop": "8px"},
-            ),
-        ]),
-        html.Div(style={"flex": "1 1 90px"}, children=[
-            html.Label("Dose (mg)", style=LABEL),
-            dcc.Input(id="dose-mg", type="number", value=config.CURRENT_DOSE_MG, min=0,
-                      style={**INPUT_STYLE, "maxWidth": "100px"}),
-        ]),
-        html.Div(style={"flex": "1 1 120px"}, children=[
-            html.Label("Dose time (HH:MM)", style=LABEL),
-            dcc.Input(id="dose-time", type="text", placeholder="e.g. 08:30",
-                      style={**INPUT_STYLE, "maxWidth": "140px"}),
-        ]),
-    ],
-)
 
 # ---------------------------------------------------------------------------
 # Layout
@@ -174,16 +150,10 @@ app.layout = html.Div(
                     },
                     accept="image/*",
                 ),
-                DOSE_FIELDS,
-                html.Div(style={"display": "flex", "gap": "12px", "alignItems": "center", "flexWrap": "wrap"}, children=[
-                    html.Div(style={"flex": "2 1 200px"}, children=[
-                        html.Label("Override timestamp (if no EXIF)", style=LABEL),
-                        dcc.Input(id="manual-ts", type="text",
-                                  placeholder="YYYY-MM-DD HH:MM  (optional)", style=INPUT_STYLE),
-                    ]),
-                    html.Div(style={"paddingTop": "20px"}, children=[
-                        html.Button("Process Reading", id="btn-submit", style=BTN_PRIMARY),
-                    ]),
+                html.Div(style={"flex": "2 1 200px", "marginBottom": "16px"}, children=[
+                    html.Label("Override timestamp (if no EXIF)", style=LABEL),
+                    dcc.Input(id="manual-ts", type="text",
+                              placeholder="YYYY-MM-DD HH:MM  (optional)", style=INPUT_STYLE),
                 ]),
             ]),
 
@@ -197,30 +167,49 @@ app.layout = html.Div(
                     ]),
                     html.Div(style={"flex": "1 1 80px"}, children=[
                         html.Label("Systolic", style=LABEL),
-                        dcc.Input(id="manual-systolic", type="number", placeholder="e.g. 118",
-                                  style=INPUT_STYLE),
+                        dcc.Input(id="manual-systolic", type="number", placeholder="e.g. 118", style=INPUT_STYLE),
                     ]),
                     html.Div(style={"flex": "1 1 80px"}, children=[
                         html.Label("Diastolic", style=LABEL),
-                        dcc.Input(id="manual-diastolic", type="number", placeholder="e.g. 72",
-                                  style=INPUT_STYLE),
+                        dcc.Input(id="manual-diastolic", type="number", placeholder="e.g. 72", style=INPUT_STYLE),
                     ]),
                     html.Div(style={"flex": "1 1 80px"}, children=[
                         html.Label("Heart rate", style=LABEL),
-                        dcc.Input(id="manual-hr", type="number", placeholder="e.g. 65",
-                                  style=INPUT_STYLE),
+                        dcc.Input(id="manual-hr", type="number", placeholder="e.g. 65", style=INPUT_STYLE),
                     ]),
                 ]),
-                DOSE_FIELDS,
-                html.Div(style={"display": "flex", "gap": "16px", "marginBottom": "16px", "flexWrap": "wrap"}, children=[
-                    html.Div(style={"flex": "3 1 240px"}, children=[
-                        html.Label("Note (optional)", style=LABEL),
-                        dcc.Input(id="manual-comment", type="text",
-                                  placeholder="Any observations...", style=INPUT_STYLE),
-                    ]),
-                    html.Div(style={"paddingTop": "20px"}, children=[
-                        html.Button("Save Reading", id="btn-manual-submit", style=BTN_PRIMARY),
-                    ]),
+                html.Div(style={"marginBottom": "16px"}, children=[
+                    html.Label("Note (optional)", style=LABEL),
+                    dcc.Input(id="manual-comment", type="text",
+                              placeholder="Any observations...", style=INPUT_STYLE),
+                ]),
+            ]),
+
+            # ── Dose fields — shared between both modes ──────────────────────
+            html.Div(style={"display": "flex", "gap": "16px", "marginBottom": "16px",
+                            "flexWrap": "wrap", "marginTop": "8px"}, children=[
+                html.Div(style={"flex": "0 0 auto"}, children=[
+                    html.Label("Dose taken today?", style=LABEL),
+                    dcc.Checklist(
+                        id="dose-taken",
+                        options=[{"label": "  Yes", "value": "yes"}],
+                        value=[],
+                        style={"fontSize": "14px", "paddingTop": "8px"},
+                    ),
+                ]),
+                html.Div(style={"flex": "1 1 90px"}, children=[
+                    html.Label("Dose (mg)", style=LABEL),
+                    dcc.Input(id="dose-mg", type="number", value=config.CURRENT_DOSE_MG, min=0,
+                              style={**INPUT_STYLE, "maxWidth": "100px"}),
+                ]),
+                html.Div(style={"flex": "1 1 120px"}, children=[
+                    html.Label("Dose time (HH:MM)", style=LABEL),
+                    dcc.Input(id="dose-time", type="text", placeholder="e.g. 08:30",
+                              style={**INPUT_STYLE, "maxWidth": "140px"}),
+                ]),
+                html.Div(style={"flex": "0 0 auto", "paddingTop": "20px"}, children=[
+                    html.Button("Process Reading", id="btn-submit", style={**BTN_PRIMARY, "display": "inline-block"}),
+                    html.Button("Save Reading", id="btn-manual-submit", style={**BTN_PRIMARY, "display": "none"}),
                 ]),
             ]),
 
@@ -379,12 +368,14 @@ def bp_zone_annotations():
 @callback(
     Output("photo-section", "style"),
     Output("manual-section", "style"),
+    Output("btn-submit", "style"),
+    Output("btn-manual-submit", "style"),
     Input("entry-mode", "value"),
 )
 def toggle_mode(mode):
     if mode == "photo":
-        return {}, {"display": "none"}
-    return {"display": "none"}, {}
+        return {}, {"display": "none"}, BTN_PRIMARY, {**BTN_PRIMARY, "display": "none"}
+    return {"display": "none"}, {}, {**BTN_PRIMARY, "display": "none"}, BTN_PRIMARY
 
 
 # ---------------------------------------------------------------------------
