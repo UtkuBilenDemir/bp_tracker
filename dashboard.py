@@ -27,7 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, callback, dcc, html, no_update
 from passlib.apache import HtpasswdFile
-from PIL import Image, ExifTags
+from PIL import Image, ExifTags, ImageOps
 
 try:
     from pillow_heif import register_heif_opener
@@ -150,6 +150,7 @@ app.layout = html.Div(
                     },
                     accept="image/*",
                 ),
+                html.Div(id="file-selected-info", style={"fontSize": "13px", "color": "#2980b9", "marginBottom": "8px"}),
                 html.Div(style={"flex": "2 1 200px", "marginBottom": "16px"}, children=[
                     html.Label("Override timestamp (if no EXIF)", style=LABEL),
                     dcc.Input(id="manual-ts", type="text",
@@ -296,18 +297,24 @@ def extract_reading_via_vision(image_path: str) -> dict:
     with open(image_path, "rb") as f:
         image_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-    prompt = f"""You are reading a blood pressure monitor display from a photo.
-Return ONLY valid JSON — no prose, no markdown fences.
+    prompt = f"""Look at this photo of a blood pressure monitor display and read the numbers shown on screen.
 
-Fields:
-- systolic       (integer mmHg)
-- diastolic      (integer mmHg)
-- heart_rate     (integer bpm)
-- confidence     ("low" | "medium" | "high")
-- any_warnings   (string, or "")
-- short_comment  (1–2 sentences, friendly, clinically grounded.
-                  Baseline is {config.BASELINE_SYSTOLIC}/{config.BASELINE_DIASTOLIC} mmHg,
-                  HR {config.BASELINE_HR} bpm. Note if elevated vs baseline.)"""
+The display typically shows:
+- A large number at the top or left = SYSTOLIC (upper, larger value, e.g. 110–160)
+- A number below/right of systolic = DIASTOLIC (lower, smaller value, e.g. 60–100)
+- A pulse/heart symbol with a number = HEART RATE (beats per minute, e.g. 50–90)
+
+Read only what is actually visible on the display. Do not guess or estimate.
+
+Return ONLY valid JSON (no prose, no markdown fences):
+{{
+  "systolic": <integer mmHg>,
+  "diastolic": <integer mmHg>,
+  "heart_rate": <integer bpm>,
+  "confidence": "low" | "medium" | "high",
+  "any_warnings": "<string or empty string>",
+  "short_comment": "<1-2 sentences. Baseline is {config.BASELINE_SYSTOLIC}/{config.BASELINE_DIASTOLIC} mmHg, HR {config.BASELINE_HR} bpm. Note if elevated vs baseline.>"
+}}"""
 
     response = client.messages.create(
         model=config.VISION_MODEL,
@@ -470,6 +477,17 @@ def update_charts(_n, _upload, _manual, _delete):
 # ---------------------------------------------------------------------------
 
 @callback(
+    Output("file-selected-info", "children"),
+    Input("upload-photo", "filename"),
+    prevent_initial_call=True,
+)
+def show_selected_file(filename):
+    if filename:
+        return f"📷 Selected: {filename}"
+    return ""
+
+
+@callback(
     Output("upload-status", "children"),
     Input("btn-submit", "n_clicks"),
     State("upload-photo", "contents"),
@@ -502,6 +520,7 @@ def process_reading(_, contents, filename, dose_taken, dose_mg, dose_time, manua
         tmp_orig.close()
 
         img = Image.open(tmp_orig.name)
+        img = ImageOps.exif_transpose(img)
         img.convert("RGB").save(tmp_jpeg.name, "JPEG", quality=90)
         tmp_jpeg.close()
 

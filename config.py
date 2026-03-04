@@ -11,7 +11,7 @@ HTPASSWD_PATH = "data/.htpasswd"
 
 # --- API ---
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-VISION_MODEL = "claude-sonnet-4-20250514"
+VISION_MODEL = "claude-opus-4-6"
 
 # --- Current dose (update when titration changes) ---
 CURRENT_DOSE_MG = 5
