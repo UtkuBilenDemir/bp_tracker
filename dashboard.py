@@ -214,6 +214,7 @@ app.layout = html.Div(
             ]),
 
             html.Div(id="upload-status", style={"marginTop": "12px", "fontSize": "14px"}),
+            html.Div(id="manual-status", style={"marginTop": "12px", "fontSize": "14px"}),
         ]),
 
         # ── Charts ──────────────────────────────────────────────────────────
@@ -387,9 +388,10 @@ def toggle_mode(mode):
     Output("hr-chart", "figure"),
     Input("refresh", "n_intervals"),
     Input("upload-status", "children"),
+    Input("manual-status", "children"),
     Input("delete-status", "children"),
 )
-def update_charts(_n, _upload, _delete):
+def update_charts(_n, _upload, _manual, _delete):
     df = load_data()
 
     fig_bp = go.Figure()
@@ -551,7 +553,7 @@ def process_reading(_, contents, filename, dose_taken, dose_mg, dose_time, manua
 # ---------------------------------------------------------------------------
 
 @callback(
-    Output("upload-status", "children", allow_duplicate=True),
+    Output("manual-status", "children"),
     Input("btn-manual-submit", "n_clicks"),
     State("manual-timestamp", "value"),
     State("manual-systolic", "value"),
