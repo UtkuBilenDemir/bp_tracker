@@ -214,7 +214,9 @@ app.layout = html.Div(
                 ]),
             ]),
 
-            html.Div(id="upload-status", style={"marginTop": "12px", "fontSize": "14px"}),
+            dcc.Loading(type="circle", children=
+                html.Div(id="upload-status", style={"marginTop": "12px", "fontSize": "14px"}),
+            ),
             html.Div(id="manual-status", style={"marginTop": "12px", "fontSize": "14px"}),
         ]),
 
@@ -329,6 +331,13 @@ Return ONLY valid JSON (no prose, no markdown fences):
         }],
     )
     raw = response.content[0].text.strip()
+    if not raw:
+        raise ValueError("Vision model returned empty response")
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
     result = json.loads(raw)
     if result.get("confidence") == "low":
         raise ValueError(f"Low confidence: {result.get('any_warnings', '')}")
